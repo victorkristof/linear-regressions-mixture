@@ -31,3 +31,6 @@ y_new, y_posteriors = model.predict(x_new, posteriors=True)
 ```` 
 
 A full working example can be found in `example.py`.
+
+## References
+[1] Christopher M. Bishop. Pattern Recognition and Machine Learning (Information Science and Statistics). Springer-Verlag New York, Inc., Secaucus, NJ, USA, 2006.
