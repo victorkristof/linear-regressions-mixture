@@ -1,4 +1,8 @@
 
+# PDF
+*.pdf
+
+
 # Created by https://www.gitignore.io/api/python,pycharm,ipythonnotebook
 
 ### Python ###
