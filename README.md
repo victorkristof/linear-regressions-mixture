@@ -1,5 +1,5 @@
 # Mixture of Linear Regressions
-We propose an implementation of the mixtures of linear regression models, as described in Bishop [1]. The main changes are
+We propose an implementation of the mixtures of linear regression models, as described in Bishop [1] (Section 14.5.1). The main changes are
 
  1. the precision parameter `beta` is learned independently for each component and not shared between all them
  2. the optional hyperparameter `lambda` that acts as a regularizer and might help in some cases.
