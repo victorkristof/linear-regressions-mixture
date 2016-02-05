@@ -1,13 +1,12 @@
 from __future__ import print_function
 import numpy as np
 import scipy.linalg as lin
-import pickle as cp
 from .progressbar import ProgressBar
 from .model import Model, ModelError
 from scipy.stats import norm
 
 
-class LinearRegressionMixtures(Model):
+class LinearRegressionsMixture(Model):
     """
     Mixture of linear regression models, as described in Bishop [1] (Section 14.5.1).
 
@@ -18,18 +17,17 @@ class LinearRegressionMixtures(Model):
     # List of allowed keys for use with kwargs
     allowed_keys = ['K', 'beta', 'lam', 'iterations', 'epsilon', 'random_restarts']
 
-    def __init__(self, X, y, K=2, beta=1, lam=0, iterations=1000, epsilon=1e-4, random_restarts=None):
+    def __init__(self, X, y, K=2, lam=0, iterations=1000, epsilon=1e-4, random_restarts=None):
         """
         :param X:               Data set
         :param y:               Labels
         :param K:               Number of mixture components
-        :param beta:            Precision term for the probability of the data under the regression function
         :param lam:             Regularization parameter for the regression weights
         :param iterations:      Maximum number of iterations
         :param epsilon:         Condition for convergence
         :param random_restarts: Restart the training with different random initial parameters
         """
-        super(LinearRegressionMixtures, self).__init__(self.__class__.__name__ + " (%s components)" % K, X, y)
+        super(LinearRegressionsMixture, self).__init__(self.__class__.__name__ + " (%s components)" % K, X, y)
 
         # Model hyperparameters
         self.K = K
@@ -42,7 +40,7 @@ class LinearRegressionMixtures(Model):
         self.w = np.zeros((self.D, K))
         self.pi = np.zeros(K)
         self.gamma = np.zeros((self.N, K))
-        self.beta = beta
+        self.beta = 1 / np.var(y)
         self.marginal_likelihood = - np.inf
         self.trained = False
         self.random_restarts = random_restarts
@@ -98,7 +96,7 @@ class LinearRegressionMixtures(Model):
         # Regression weights
         w = np.random.rand(D, self.K)
 
-        # Precision parameter
+        # Precision parameter, initialized to the reciprocal of the true variance of the targets
         beta = np.zeros(self.K) + self.beta
 
         # Initialize likelihood

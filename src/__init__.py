@@ -1,1 +1,1 @@
-from .linear_regression_mixtures import LinearRegressionMixtures
+from .linear_regression_mixtures import LinearRegressionsMixture
