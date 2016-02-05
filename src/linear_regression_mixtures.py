@@ -4,11 +4,12 @@ import scipy.linalg as lin
 import pickle as cp
 from .progressbar import ProgressBar
 from .model import Model, ModelError
+from scipy.stats import norm
 
 
 class LinearRegressionMixtures(Model):
     """
-    Mixtures of linear regression models, as described in Bishop [1].
+    Mixture of linear regression models, as described in Bishop [1] (Section 14.5.1).
 
     [1] Christopher M. Bishop. Pattern Recognition and Machine Learning (Information Science and Statistics).
     Springer-Verlag New York, Inc., Secaucus, NJ, USA, 2006.
@@ -50,7 +51,7 @@ class LinearRegressionMixtures(Model):
         """
         Description of the model.
 
-        :return:    String representation of the model
+        :return: String representation of the model
         """
         description = "Model:        %s\n" % self.name
         if self.trained:
@@ -156,7 +157,6 @@ class LinearRegressionMixtures(Model):
             except:
                 pass
 
-
             complete_log_likelihood_old = complete_log_likelihood
 
         # Hitting maximum number of iterations
@@ -218,10 +218,9 @@ class LinearRegressionMixtures(Model):
         :param k_fold:  Number of folds
         :param verbose: Display state of evaluation
         :param silent:  Hide the progress bar
-        :return:        Mean RMSE, std dev RMSE, mean accuracy, std dev accuracy
+        :return:        Mean RMSE, std dev RMSE
         """
         rmse_all = []
-        accuracy_all = []
         if not silent:
             count = 0
             bar = ProgressBar(k_fold, count=True, text="Cross-Validation")
@@ -232,7 +231,7 @@ class LinearRegressionMixtures(Model):
             if not silent:
                 bar.update(count)
                 count += 1
-        return np.mean(rmse_all), np.std(rmse_all), np.mean(accuracy_all), np.std(accuracy_all)
+        return np.mean(rmse_all), np.std(rmse_all)
 
     def cross_validate(self, k_fold=10, verbose=False, silent=False):
         """
@@ -241,22 +240,21 @@ class LinearRegressionMixtures(Model):
         :param k_fold:  Number of folds
         :param verbose: Display state of evaluation
         :param silent:  Hide the progress bar
-        :return:        Mean RMSE, std dev RMSE, mean accuracy, std dev accuracy
+        :return:        Mean RMSE, std dev RMSE
         """
         if k_fold <= 1:
             raise(ModelError("Parameter k_fold must at least be equal to 2"))
         if self.trained:
-            rmse_avg, rmse_std, accuracy_avg, accuracy_std = self._cross_validate(k_fold, verbose, silent)
-            return rmse_avg, rmse_std, accuracy_avg, accuracy_std
+            rmse_avg, rmse_std = self._cross_validate(k_fold, verbose, silent)
+            return rmse_avg, rmse_std
         else:
             raise(ModelError("Model not trained"))
 
     @staticmethod
-    def _find_parameters(betas, lambdas, scores, verbose):
+    def _find_hyperparameters(lambdas, scores, verbose):
         """
-        Extract the hyperparameters according to some scores.
+        Extract the optimal hyperparameter according to some scores.
 
-        :param betas:   Ndarray of betas
         :param lambdas: Ndarray of lambdas
         :param scores:  Ndarray of scores
         :param verbose: Display the optimal parameters
@@ -264,73 +262,54 @@ class LinearRegressionMixtures(Model):
         """
         indices = np.unravel_index(np.argmin(scores), np.shape(scores))
         optimal_lambda = lambdas[indices[0]]
-        optimal_beta = betas[indices[1]]
         if verbose:
             print("Optimal lambda: %s" % optimal_lambda)
-            print("Optimal beta  : %s" % optimal_beta)
-        return optimal_beta, optimal_lambda
+        return optimal_lambda
 
-    def grid_search(self, betas, lambdas, k_fold=1, X_test=None, y_test=None, verbose=False, silent=False):
+    def grid_search(self, lambdas, k_fold=1, X_test=None, y_test=None, verbose=False, silent=False):
         """
-        Train the model using grid search over beta and lambda.
+        Train the model using grid search over lambda.
 
-        :param betas:   Ndarray of betas
         :param lambdas: Ndarray of lambdas
         :param k_fold:  If > 1, cross-validation is used for each combination using self.X and self.y. Otherwise must pass X_test and y_test
         :param X_test:  Test set if cross-validation is not used
         :param y_test:  Test label if cros-validation is not used
         :param verbose: Display details during training
         :param silent:  Hide the progress bar
-        :return:        RMSE and accuracy for each combination (avg and std dev if cross-validated)
+        :return:        RMSE for each combination (avg and std dev if cross-validated)
         """
         rmse_all = []
         rmse_std_all = []
-        accuracy_all = []
-        accuracy_std_all = []
         if not silent:
             count = 0
             # +1 to account for the final training
-            bar = ProgressBar(len(betas) * len(lambdas) + 1, text="Grid Search", count=True)
+            bar = ProgressBar(len(lambdas) + 1, text="Grid Search", count=True)
             bar.start()
         for i, l in enumerate(lambdas):
             self.lam = l
             rmse_i = []
             rmse_std_i = []
-            accuracy_i = []
-            accuracy_std_i = []
-            for j, b in enumerate(betas):
-                self.beta = b
-                self.w, self.pi, self.gamma, self.beta, self.marginal_likelihood = self._train(self.X, self.y, verbose, silent=True)
-                if k_fold == 1:
-                    if X_test and y_test:
-                        rmse, accuracy, _ = self.evaluate(X_test, y_test)
-                        rmse_i.append(rmse)
-                        accuracy_i.append(accuracy)
-                    else:
-                        raise(ModelError("Testing set not valid"))
+            self.w, self.pi, self.gamma, self.beta, self.marginal_likelihood = self._train(self.X, self.y, verbose, silent=True)
+            if k_fold == 1:
+                if X_test and y_test:
+                    rmse = self.evaluate(X_test, y_test)
+                    rmse_i.append(rmse)
                 else:
-                    rmse_avg, rmse_std, accuracy_avg, accuracy_std = self._cross_validate(k_fold, verbose, silent=True)
-                    rmse_i.append(rmse_avg)
-                    rmse_std_i.append(rmse_std)
-                    accuracy_i.append(accuracy_avg)
-                    accuracy_std_i.append(accuracy_std)
-                if not silent:
-                    bar.update(count)
-                    count += 1
+                    raise(ModelError("Testing set not valid"))
+            else:
+                rmse_avg, rmse_std = self._cross_validate(k_fold, verbose, silent=True)
+                rmse_i.append(rmse_avg)
+                rmse_std_i.append(rmse_std)
+            if not silent:
+                bar.update(count)
+                count += 1
 
             rmse_all.append(rmse_i)
-            accuracy_all.append(accuracy_i)
             if k_fold > 1:
                 rmse_std_all.append(rmse_std_i)
-                accuracy_std_all.append(accuracy_std_i)
-
-        # with open('accuracy_all.pkl', 'wb') as f:
-        #     cp.dump(accuracy_all, f)
-        # with open('rmse_all.pkl', 'wb') as f:
-        #     cp.dump(rmse_all, f)
 
         # Extract the best hyperparameters
-        self.beta, self.lam = self._find_parameters(betas, lambdas, rmse_all, verbose=verbose)
+        self.lam = self._find_hyperparameters(lambdas, rmse_all, verbose=verbose)
         # Train the final model
         self.w, self.pi, self.gamma, self.beta, self.marginal_likelihood = self._train(self.X, self.y, verbose=verbose, silent=True)
         if not silent:
@@ -339,66 +318,42 @@ class LinearRegressionMixtures(Model):
         self.trained = True
 
         if k_fold == 1:
-            return rmse_all, accuracy_all
+            return rmse_all
         else:
-            return rmse_all, rmse_std_all, accuracy_all, accuracy_std_all
+            return rmse_all, rmse_std_all
 
-    def _compute_euclidean_distances(self, X, x):
+    def _predict(self, x_new, posteriors):
         """
-        Compute the Euclidean distance between x and every row of X.
+        Private method to predict the value of x_new.
 
-        :param X:   Matrix (N x D)
-        :param x:   Vector (D)
-        :return:    List of Euclidean distances
-        """
-        distances = []
-        for x_i in X:
-            distances.append(np.linalg.norm(x_i - x))
-        return distances
-
-    def _get_closest_point(self, X_train, x_new):
-        """
-        Find the training point closest to the new data point x_new.
-
-        :param X_train: Training set (N x D)
-        :param x_new:   New data point (D)
-        :return:        Index of the data point in X closest to x_new
-        """
-        distances = self._compute_euclidean_distances(X_train, x_new)
-        return np.argmin(distances)
-
-    def _predict(self, X_train, x_new, posteriors):
-        """
-        Private method to predict the value of x_new using the given training set.
-
-        :param X_train:     Training set (N x D)
         :param x_new:       New data point (D)
         :param posteriors:  Whether or not returning the predictions together with the posterior probabilities
         :return:            Predicted value and index of corresponding mixture component
         """
-        # n = self._get_closest_point(X_train, x_new)
-        # tx = np.ones((1, len(x_new )+ 1))
-        # tx[0, 1:] = x_new
-        # if posteriors:
-        #     y_new = np.dot(tx, self.w)
-        #     normalization = np.sum(self.gamma[n, :])
-        #     y_posteriors = self.gamma[n, :] / normalization
-        #     return y_new, y_posteriors
-        # else:
-        #     k = np.argmax(self.gamma[n, :])
-        #     w_k = self.w[:, k]
-        #     y_new = np.dot(tx, w_k)[0]
-        #
-        #     return y_new, k
-
         tx = np.ones((1, len(x_new ) + 1))
         tx[0, 1:] = x_new
         y_new = 0
+
         for k in range(self.K):
             w_k = self.w[:, k]
             pi_k = self.pi[k]
             y_new += pi_k * np.dot(tx, w_k)[0]
-        return y_new
+
+        if posteriors:
+            y_posteriors = []
+            for k in range(self.K):
+                pi_k = self.pi[k]
+                beta_k = self.beta[k]
+                w_k = self.w[:, k]
+                mu = np.dot(tx, w_k)[0]
+                sigma = 1 / np.sqrt(beta_k)
+                y_posteriors.append(pi_k * norm.pdf(y_new, loc=mu, scale=sigma))
+            y_posteriors = np.array(y_posteriors)
+            normalization = y_posteriors.sum()
+            y_posteriors = y_posteriors / normalization
+            return y_new, y_posteriors
+        else:
+            return y_new
 
 
     def predict(self, x_new, posteriors=False):
@@ -413,59 +368,39 @@ class LinearRegressionMixtures(Model):
         if self.trained:
             x_new = list(x_new)
             if len(x_new) == self.X.shape[1]:
-                return self._predict(self.X, x_new, posteriors)
+                return self._predict(x_new, posteriors)
             else:
                 raise(ModelError("Invalid size for new data point (%s instead of %s)" % (len(x_new), self.X.shape[1])))
         else:
             raise(ModelError("Model not trained"))
 
-    def _evaluate(self, X_train, X_test, y_test, verbose):
+    def _evaluate(self, X_test, y_test, verbose):
         """
         Private method to evaluate the model against a test set.
 
-        :param X_train: Training set (N x D)
         :param X_test:  Test set (N* x D)
         :param y_test:  Test labels (N*)
         :param verbose: Display details during the evaluation
         :return:        Total RMSE, accuracy and a counter of chosen mixture components
         """
-        se_failed = []
-        se_success = []
         se_total = []
-        accurate = 0
-        #chosen = Counter()
         if verbose:
             bar = ProgressBar(end_value=X_test.shape[0], text="Data point", count=True)
             bar.start()
         for i, x_new in enumerate(X_test):
             y_actual = y_test[i][0]
-            y_new = self._predict(X_train, list(x_new), posteriors=False)
-            # print("Predicted: %s | Actual: %s" % (y_new, y_actual))
-            #chosen.update([k])
+            y_new = self._predict(list(x_new), posteriors=False)
             se = (y_actual - y_new)**2
             se_total.append(se)
-            if y_actual >= 1.0:
-                se_success.append(se)
-            else:
-                se_failed.append(se)
-            if (y_new >= 1 and y_actual >= 1) or (y_new < 1 and y_actual < 1):
-                accurate += 1
             if verbose:
                 bar.update(i)
 
-        rmse_failed = np.sqrt(np.mean(se_failed))
-        rmse_success = np.sqrt(np.mean(se_success))
         rmse = np.sqrt(np.mean(se_total))
-        accuracy = accurate / float(y_test.size)
 
         if verbose:
-            print("Accuracy     : %s" % accuracy)
-            print("RMSE         : %s" % rmse)
-            print("RMSE failed  : %s" % rmse_failed)
-            print("RMSE success : %s" % rmse_success)
-            #print("Chosen  : %s" % chosen)
+            print("RMSE: %s" % rmse)
 
-        return rmse_failed, rmse_success, rmse, accuracy
+        return rmse
 
     def evaluate(self, X_test, y_test, verbose=False):
         """
@@ -474,7 +409,7 @@ class LinearRegressionMixtures(Model):
         :param X_test:  Test set (N* x D)
         :param y_test:  Test labels (N*)
         :param verbose: Display details during the evaluation
-        :return:        Total RMSE, accuracy and a counter of chosen mixture components
+        :return:        Total RMSE
         """
         if verbose:
             print("Evaluating model %s..." % self.name)
