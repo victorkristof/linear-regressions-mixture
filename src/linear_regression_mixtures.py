@@ -97,7 +97,7 @@ class LinearRegressionsMixture(Model):
         w = np.random.rand(D, self.K)
 
         # Precision parameter, initialized to the reciprocal of the true variance of the targets
-        beta = np.zeros(self.K) + self.beta
+        beta = self.beta
 
         # Initialize likelihood
         complete_log_likelihood = - np.inf
@@ -113,7 +113,7 @@ class LinearRegressionsMixture(Model):
             # Compute Likelihood for each data point
             err = (np.tile(y, (1, self.K)) - np.dot(tX, w)) ** 2  # y - <w_k, x_n>
             prbs = - 0.5 * np.tile(beta, (N, 1)) * err
-            probabilities =  np.tile(np.sqrt(beta), (N, 1)) * np.exp(prbs)  # N(y_n | <w_k, x_n>, beta^{-1})
+            probabilities =  1 / np.sqrt(2 * np.pi) * np.tile(np.sqrt(beta), (N, 1)) * np.exp(prbs)  # N(y_n | <w_k, x_n>, beta^{-1})
 
             # Compute expected mixture weights
             gamma = np.tile(pi, (N, 1)) * probabilities
@@ -133,7 +133,7 @@ class LinearRegressionsMixture(Model):
                 w[:, k] = lin.solve(L, R)[:, 0]
 
             # Max with respect to the precision term
-            beta = N * pi / np.sum(gamma * err)
+            beta = N / np.sum(gamma * err)
 
             # Evaluate the complete data log-likelihood to test for convergence
             complete_log_likelihood = float(np.sum(np.log(np.sum(np.tile(pi, (N, 1)) * probabilities, axis=1))))
@@ -338,13 +338,13 @@ class LinearRegressionsMixture(Model):
             y_new += pi_k * np.dot(tx, w_k)[0]
 
         if posteriors:
+            beta = self.beta
             y_posteriors = []
             for k in range(self.K):
                 pi_k = self.pi[k]
-                beta_k = self.beta[k]
                 w_k = self.w[:, k]
                 mu = np.dot(tx, w_k)[0]
-                sigma = 1 / np.sqrt(beta_k)
+                sigma = 1 / np.sqrt(beta)
                 y_posteriors.append(pi_k * norm.pdf(y_new, loc=mu, scale=sigma))
             y_posteriors = np.array(y_posteriors)
             normalization = y_posteriors.sum()
